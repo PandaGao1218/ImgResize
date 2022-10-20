@@ -78,7 +78,7 @@ CFpImgResizeDlg::CFpImgResizeDlg(CWnd* pParent /*=nullptr*/)
 	, m_Width_Src(256)
 	, m_fSave(FALSE)
 	, m_fMulti(FALSE)
-	, m_fShow(FALSE)
+	, m_fShow(TRUE)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
@@ -185,6 +185,21 @@ BOOL CFpImgResizeDlg::OnInitDialog()
 	}
 	lpBits = (BYTE*)imadibDst + (*(LPDWORD)imadibDst) + 256 * sizeof(RGBQUAD);
 
+
+
+	CFont m_editfont;
+	CFont m_btnFont;
+
+	//设置 Static Text 静态文本字体放大
+	m_editfont.CreatePointFont(180, _T("黑体"), NULL);
+	GetDlgItem(IDC_EDIT_SRCWIDTH)->SetFont(&m_editfont);
+	GetDlgItem(IDC_EDIT_SRCHEIGHT)->SetFont(&m_editfont);
+	GetDlgItem(IDC_EDIT_DSTWIDTH)->SetFont(&m_editfont);
+	GetDlgItem(IDC_EDIT_DSTHEIGHT)->SetFont(&m_editfont);
+
+	m_btnFont.CreatePointFont(300, _T("黑体"), NULL);
+	GetDlgItem(IDC_START)->SetFont(&m_btnFont);
+	GetDlgItem(IDCANCEL)->SetFont(&m_btnFont);
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -504,7 +519,7 @@ int CFpImgResizeDlg::SaveImage(CString fn, BYTE* bmpImageBuf, int w, int h)
 	fh.bfSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + 1024 + bmi->biHeight * nByteBound;
 	fh.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + 1024;
 
-	filename = fn + _T("_1.bmp");
+	filename = fn;// +_T("_1.bmp");
 
 
 	char* saveFileName = (LPSTR)(LPCTSTR)filename;
