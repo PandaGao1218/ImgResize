@@ -49,4 +49,7 @@ public:
 	int SaveImage(CString fn, BYTE* imageBuf, int w, int h);
 	BOOL m_fShow;
 	int MultiResize(CString path);
+	afx_msg void OnBnClickedAnalysis();
+	CString m_msgLeft;
+	CString m_msgRight;
 };
