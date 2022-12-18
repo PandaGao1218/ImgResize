@@ -3,6 +3,7 @@
 //
 
 #include "pch.h"
+#include <stdint.h>
 #include "framework.h"
 #include "FpImgResize.h"
 #include "FpImgResizeDlg.h"
