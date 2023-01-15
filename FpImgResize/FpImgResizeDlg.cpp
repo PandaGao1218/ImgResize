@@ -549,6 +549,7 @@ int CFpImgResizeDlg::SaveImage(CString fn, BYTE* bmpImageBuf, int w, int h)
 		TRACE("Can't open file %s,error=%u/n", saveFileName, fileException.m_cause);
 	}
 	
+	myFile.Close();
 	//fp = fopen((LPSTR)(LPCTSTR)filename, "wb");
 	//fp = fopen(filename.GetBuffer(0), "wb");
 	//if (fp) {
