@@ -13,19 +13,24 @@
 #define IDC_EDIT_DSTHEIGHT              1003
 #define IDC_IMAGE_SRC                   1004
 #define IDC_IMAGE_DST                   1005
-#define IDC_START                       1006
+#define IDC_RESIZE                      1006
 #define IDC_CHECK_SAVE                  1007
 #define IDC_CHECK_MULTI                 1008
 #define IDC_CHECK_SHOW                  1009
+#define IDC_CONVERT                     1010
+#define IDC_EDIT_CVTWIDTH               1012
+#define IDC_EDIT_CVTHEIGHT              1013
 #define IDC_STATIC7                     1014
 #define IDC_STATIC8                     1015
 #define IDC_STATIC3                     1016
 #define IDC_STATIC4                     1017
 #define IDC_STATIC5                     1018
 #define IDC_STATIC6                     1019
+#define IDC_STATIC9                     1020
 #define IDC_MSG_LEFT                    1021
 #define IDC_MSG_RIGHT                   1022
 #define IDC_ANALYSIS                    1023
+#define IDC_STATIC10                    1024
 
 // Next default values for new objects
 // 

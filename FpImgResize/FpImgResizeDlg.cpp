@@ -79,9 +79,10 @@ CFpImgResizeDlg::CFpImgResizeDlg(CWnd* pParent /*=nullptr*/)
 	, m_Width_Src(256)
 	, m_fSave(FALSE)
 	, m_fMulti(FALSE)
-	, m_fShow(TRUE)
 	, m_msgLeft(_T(""))
 	, m_msgRight(_T(""))
+	, m_Height_Cvt(360)
+	, m_Width_Cvt(256)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
@@ -97,17 +98,27 @@ void CFpImgResizeDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_IMAGE_SRC, m_ftImage_Src);
 	DDX_Check(pDX, IDC_CHECK_SAVE, m_fSave);
 	DDX_Check(pDX, IDC_CHECK_MULTI, m_fMulti);
-	DDX_Check(pDX, IDC_CHECK_SHOW, m_fShow);
 	DDX_Text(pDX, IDC_MSG_LEFT, m_msgLeft);
 	DDX_Text(pDX, IDC_MSG_RIGHT, m_msgRight);
+	DDX_Text(pDX, IDC_EDIT_CVTWIDTH, m_Width_Cvt);
+	DDX_Text(pDX, IDC_EDIT_CVTHEIGHT, m_Height_Cvt);
+	DDX_Control(pDX, IDC_CONVERT, m_btConvert);
+	DDX_Control(pDX, IDC_ANALYSIS, m_btAnalysis);
+	DDX_Control(pDX, IDC_RESIZE, m_btResize);
 }
 
 BEGIN_MESSAGE_MAP(CFpImgResizeDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
-	ON_BN_CLICKED(IDC_START, &CFpImgResizeDlg::OnBnClickedStart)
+	ON_BN_CLICKED(IDC_RESIZE, &CFpImgResizeDlg::OnBnClickedStart)
 	ON_BN_CLICKED(IDC_ANALYSIS, &CFpImgResizeDlg::OnBnClickedAnalysis)
+	ON_BN_CLICKED(IDC_CONVERT, &CFpImgResizeDlg::OnBnClickedConvert)
+	ON_BN_CLICKED(IDCANCEL, &CFpImgResizeDlg::OnBnClickedCancel)
+	ON_EN_CHANGE(IDC_EDIT_SRCWIDTH, &CFpImgResizeDlg::OnEnChangeEditSrcwidth)
+	ON_EN_CHANGE(IDC_EDIT_SRCHEIGHT, &CFpImgResizeDlg::OnEnChangeEditSrcheight)
+	ON_EN_CHANGE(IDC_EDIT_DSTWIDTH, &CFpImgResizeDlg::OnEnChangeEditDstwidth)
+	ON_EN_CHANGE(IDC_EDIT_DSTHEIGHT, &CFpImgResizeDlg::OnEnChangeEditDstheight)
 END_MESSAGE_MAP()
 
 
@@ -202,10 +213,16 @@ BOOL CFpImgResizeDlg::OnInitDialog()
 	GetDlgItem(IDC_EDIT_SRCHEIGHT)->SetFont(&m_editfont);
 	GetDlgItem(IDC_EDIT_DSTWIDTH)->SetFont(&m_editfont);
 	GetDlgItem(IDC_EDIT_DSTHEIGHT)->SetFont(&m_editfont);
+	GetDlgItem(IDC_EDIT_CVTWIDTH)->SetFont(&m_editfont);
+	GetDlgItem(IDC_EDIT_CVTHEIGHT)->SetFont(&m_editfont);
 
 	m_btnFont.CreatePointFont(300, _T("黑体"), NULL);
-	GetDlgItem(IDC_START)->SetFont(&m_btnFont);
+	GetDlgItem(IDC_RESIZE)->SetFont(&m_btnFont);
+	GetDlgItem(IDC_CONVERT)->SetFont(&m_btnFont);
+	GetDlgItem(IDC_ANALYSIS)->SetFont(&m_btnFont);
 	GetDlgItem(IDCANCEL)->SetFont(&m_btnFont);
+	GetDlgItem(IDC_CHECK_SAVE)->SetFont(&m_btnFont);
+	GetDlgItem(IDC_CHECK_MULTI)->SetFont(&m_btnFont);
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -273,14 +290,32 @@ void CFpImgResizeDlg::OnBnClickedStart()
 		MultiResize(pn);
 	}
 	else {
-		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Finger Files (*.bmp)|*.bmp|All Files|*.*||"), this);
+		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Raw Files(*.raw)|*.raw|Bmp Files (*.bmp)|*.bmp|All Files|*.*||"), this);
 		if (dlg.DoModal() == IDCANCEL) return;
 
-		CString fn = dlg.GetPathName();
-		ReadImage(fn, m_bImageSrc);
+		CString path = dlg.GetPathName();
+		CString path_r;
+
+		CString extention = PathFindExtension(path);
+		if (extention == ".bmp")
+		{
+			ReadImageBmp(path, m_bImageSrc);
+
+			path_r.Format(_T("%s_%d_%d.bmp"), path, m_nWidthDst, m_nHeightDst);
+		}
+		else if (extention == ".raw")
+		{
+			// Read file contents
+			CFile file(path, CFile::modeRead);
+			UINT cnt = (UINT)file.GetLength();
+			file.Read(m_bImageSrc, cnt);
+			file.Close();
+
+			path_r.Format(_T("%s_%d_%d.raw"), path, m_nWidthDst, m_nHeightDst);
+		}
+		else return;
 
 		ImageView(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, 0);
-//		m_msg = "图像读取完成.";
 
 		// Filtering
 		m_nWidthDst = m_Width_Dst;
@@ -290,9 +325,18 @@ void CFpImgResizeDlg::OnBnClickedStart()
 		ImageView(m_bImageDst, m_nWidthDst, m_nHeightDst, 2);
 
 		if (m_fSave) {
-			SaveImage(fn, imadibDst, m_nWidthDst, m_nHeightDst);
+			if (extention == ".bmp")
+			{
+				SaveImageBmp(path_r, imadibDst, m_nWidthDst, m_nHeightDst);
+			}
+			else if (extention == ".raw")
+			{
+				SaveImageRaw(path_r, m_bImageDst, m_nWidthDst * m_nHeightDst);
+			}
+
 		}
-//		m_msg_new = "图像处理完成.";
+		//		m_msg_new = "图像处理完成.";
+
 	}
 
 
@@ -301,9 +345,7 @@ void CFpImgResizeDlg::OnBnClickedStart()
 }
 
 
-
-
-void CFpImgResizeDlg::ReadImage(CString filename, BYTE* image)
+void CFpImgResizeDlg::ReadImageBmp(CString filename, BYTE* image)
 {
 	// TODO: Add your implementation code here.
 
@@ -507,7 +549,7 @@ int CFpImgResizeDlg::ImageResize(BYTE* srcImage, int sw, int sh, BYTE* dstImage,
 }
 
 
-int CFpImgResizeDlg::SaveImage(CString fn, BYTE* bmpImageBuf, int w, int h)
+int CFpImgResizeDlg::SaveImageBmp(CString fn, BYTE* bmpImageBuf, int w, int h)
 {
 	// TODO: Add your implementation code here.
 
@@ -561,6 +603,34 @@ int CFpImgResizeDlg::SaveImage(CString fn, BYTE* bmpImageBuf, int w, int h)
 	return 0;
 }
 
+int CFpImgResizeDlg::SaveImageRaw(CString fn, BYTE* RawImageBuf, LONG64 length)
+{
+	// TODO: Add your implementation code here.
+
+	CString filename;
+
+	filename = fn;
+
+	char* saveFileName = (LPSTR)(LPCTSTR)filename;
+
+	CStdioFile myFile;
+	CFileException fileException;
+
+	if (myFile.Open((LPCTSTR)filename, (CFile::typeBinary | CFile::modeCreate | CFile::modeReadWrite | CFile::shareDenyWrite), &fileException))
+	{
+		myFile.Write(RawImageBuf, (UINT)length);
+
+	}
+	else
+	{
+		TRACE("Can't open file %s,error=%u/n", saveFileName, fileException.m_cause);
+	}
+
+	myFile.Close();
+
+	return 0;
+}
+
 
 int CFpImgResizeDlg::MultiResize(CString path)
 {
@@ -599,35 +669,134 @@ int CFpImgResizeDlg::MultiResize(CString path)
 			CString fn = path + "\\" + finder.GetFileName();//文件夹名称dlg.GetPathName();
 			int dotPos = fn.ReverseFind('.');
 			CString fileExt = fn.Right(fn.GetLength() - dotPos);
-			if (fileExt != ".bmp")	continue;
+			CString fn_r;
+			if (fileExt == ".bmp") {
+				ReadImageBmp(fn, m_bImageSrc);
+				fn_r.Format(_T("%s_%d_%d.bmp"), fn, m_nWidthDst, m_nHeightDst);
 
-			ReadImage(fn, m_bImageSrc);
-
-			if (m_fShow)
 				ImageView(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, 0);
-			//m_msg = "图像读取完成.";
+				//m_msg = "图像读取完成.";
 
-			// Filtering
-			//ImageFilterF(m_bImageOrigin);
-			m_nWidthDst = m_Width_Dst;
-			m_nHeightDst = m_Height_Dst;
-			ImageResize(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, m_bImageDst, m_nWidthDst, m_nHeightDst);
+				// Filtering
+				//ImageFilterF(m_bImageOrigin);
+				m_nWidthDst = m_Width_Dst;
+				m_nHeightDst = m_Height_Dst;
+				ImageResize(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, m_bImageDst, m_nWidthDst, m_nHeightDst);
 
-			if (m_fShow)
 				ImageView(m_bImageDst, m_nWidthDst, m_nHeightDst, 2);
-			//m_msg_new = "图像处理完成.";
+				//m_msg_new = "图像处理完成.";
 
-			//	save
-			if (m_fSave) {
-				SaveImage(fn, imadibDst, m_nWidthDst, m_nHeightDst);
+				//	save
+				if (m_fSave) {
+					SaveImageBmp(fn_r, imadibDst, m_nWidthDst, m_nHeightDst);
+				}
 			}
+			else if (fileExt == ".raw") {
 
+				// Read file contents
+				CFile file(fn, CFile::modeRead);
+				UINT cnt = (UINT)file.GetLength();
+				file.Read(m_bImageSrc, cnt);
+				file.Close();
+
+				fn_r.Format(_T("%s_%d_%d.raw"), fn, m_nWidthDst, m_nHeightDst);
+
+				ImageView(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, 0);
+				//m_msg = "图像读取完成.";
+
+				// Filtering
+				//ImageFilterF(m_bImageOrigin);
+				m_nWidthDst = m_Width_Dst;
+				m_nHeightDst = m_Height_Dst;
+				ImageResize(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, m_bImageDst, m_nWidthDst, m_nHeightDst);
+
+				ImageView(m_bImageDst, m_nWidthDst, m_nHeightDst, 2);
+				//m_msg_new = "图像处理完成.";
+
+				//	save
+				if (m_fSave) {
+					SaveImageRaw(fn_r, m_bImageDst, m_nWidthDst*m_nHeightDst);
+				}
+			}
+			else	continue;
 		}
 	}
 
 	return 0;
 }
 
+int CFpImgResizeDlg::MultiConvert(CString path)
+{
+	// TODO: Add your implementation code here.
+
+	CString strText_i, str;
+	CFileFind finder;
+
+	bool bFindFolder = finder.FindFile(path + "\\*.*");
+	while (bFindFolder)
+	{
+		bFindFolder = finder.FindNextFile();
+		if (finder.IsDots())
+			continue;
+		if (finder.IsDirectory())//是文件夹
+		{
+			//FindAllFile(strParent+finder.GetFileName()+"\\");//递归打开文件夹   
+
+		}
+
+	}
+
+	bool bFind = finder.FindFile(path + "\\*.*");
+	while (bFind)
+	{
+		bFind = finder.FindNextFile();
+		if (finder.IsDots())
+			continue;
+		if (finder.IsDirectory())//是文件夹
+		{
+			//FindAllFile(strParent+finder.GetFileName()+"\\");//递归打开文件夹   
+			CString subPn = finder.GetFileName();//文件夹名称
+			MultiConvert(path + "\\" + subPn);
+		}
+		else {
+			CString fn = path + "\\" + finder.GetFileName();//文件夹名称dlg.GetPathName();
+			int dotPos = fn.ReverseFind('.');
+			CString fileExt = fn.Right(fn.GetLength() - dotPos);
+			CString fn_r;
+			if (fileExt == ".bmp") {
+				ReadImageBmp(fn, m_bImageSrc);
+				fn_r.Format(_T("%s.raw"), fn);
+
+				ImageView(m_bImageSrc, m_Width_Cvt, m_Height_Cvt, 0);
+
+				//	save
+				if (m_fSave) {
+					SaveImageRaw(fn_r, m_bImageSrc, m_Width_Cvt * m_Height_Cvt);
+				}
+			}
+			else if (fileExt == ".raw") {
+
+				// Read file contents
+				CFile file(fn, CFile::modeRead);
+				UINT cnt = (UINT)file.GetLength();
+				file.Read(m_bImageSrc, cnt);
+				file.Close();
+
+				fn_r.Format(_T("%s.bmp"), fn);
+
+				ImageView(m_bImageSrc, m_Width_Cvt, m_Height_Cvt, 0);
+
+				//	save
+				if (m_fSave) {
+					SaveImageBmp(fn_r, imadibSrc, m_Width_Cvt, m_Height_Cvt);
+				}
+			}
+			else	continue;
+		}
+	}
+
+	return 0;
+}
 
 void LAPI_IsFinger(unsigned char* image, int width, int height, int* gScore, int* aScore, int* wScore)
 {
@@ -743,14 +912,14 @@ void LAPI_IsFinger(unsigned char* image, int width, int height, int* gScore, int
 
 int getImageAreaScore(uint8_t* imgBuf, int width, int height) {
 
-#define X_BLOCK		(10)
-#define Y_BLOCK		(10)
-#define	OFFSET1		(20)	//for black, gray unit
-#define	OFFSET2		(0)		//for white, gray unit
-#define	THRES1		(10)	//exist finger?, percent of black
-#define	THRES2		(95)	//wet, percent of black
-#define	THRES3		(90)	//dry, gray value
-#define	BAD_COFF	(0)		//weight
+#define X_BLOCK_1		(10)
+#define Y_BLOCK_1		(10)
+#define	OFFSET1_1		(20)	//for black, gray unit
+#define	OFFSET2_1		(0)		//for white, gray unit
+#define	THRES1_1		(10)	//exist finger?, percent of black
+#define	THRES2_1		(95)	//wet, percent of black
+#define	THRES3_1		(90)	//dry, gray value
+#define	BAD_COFF_1		(0)		//weight
 	int w, h;
 	int hist[256];
 
@@ -762,8 +931,8 @@ int getImageAreaScore(uint8_t* imgBuf, int width, int height) {
 	w = 256;
 	h = 360;
 
-	WIDTH_SUB = w / X_BLOCK;
-	HEIGHT_SUB = h / Y_BLOCK;
+	WIDTH_SUB = w / X_BLOCK_1;
+	HEIGHT_SUB = h / Y_BLOCK_1;
 
 
 	for (i = 0; i < 256; i++) hist[i] = 0;
@@ -813,9 +982,9 @@ int getImageAreaScore(uint8_t* imgBuf, int width, int height) {
 	}
 	//else c2 = mx / my;			//valley gray value
 
-	for (x = 0; x < X_BLOCK; x++)
+	for (x = 0; x < X_BLOCK_1; x++)
 	{
-		for (y = 0; y < Y_BLOCK; y++)
+		for (y = 0; y < Y_BLOCK_1; y++)
 		{
 			black = 0; white = 0;
 			for (mx = 0; mx < WIDTH_SUB; mx++)
@@ -823,23 +992,23 @@ int getImageAreaScore(uint8_t* imgBuf, int width, int height) {
 				for (my = 0; my < HEIGHT_SUB; my++)
 				{
 					m = imgBuf[(y * HEIGHT_SUB + my) * w + x * WIDTH_SUB + mx];
-					if (m < (c0 - OFFSET1)) black++;						//ridge
-					else if (m > (c0 + OFFSET2)) white++;					//valley or background
+					if (m < (c0 - OFFSET1_1)) black++;						//ridge
+					else if (m > (c0 + OFFSET2_1)) white++;					//valley or background
 				}
 			}
-			if (black > (WIDTH_SUB * HEIGHT_SUB * THRES1 / 100))					//exist finger
+			if (black > (WIDTH_SUB * HEIGHT_SUB * THRES1_1 / 100))					//exist finger
 			{
-				if (black > WIDTH_SUB * HEIGHT_SUB * THRES2 / 100) wet++;			//wet
-				else if (white > WIDTH_SUB * HEIGHT_SUB * THRES3 / 100) dry++;	//dry
+				if (black > WIDTH_SUB * HEIGHT_SUB * THRES2_1 / 100) wet++;			//wet
+				else if (white > WIDTH_SUB * HEIGHT_SUB * THRES3_1 / 100) dry++;	//dry
 				else valid++;
 			}
 		}
 	}
 
 	m = max(wet, dry);
-	valid -= (BAD_COFF * m);
+	valid -= (BAD_COFF_1 * m);
 	valid = max(0, valid);
-	ret = valid * 100 / (X_BLOCK * Y_BLOCK);
+	ret = valid * 100 / (X_BLOCK_1 * Y_BLOCK_1);
 	/*
 		for (i = 0; i < 256; i ++ ) hist[i] = 0;
 		cex = ((width -2*0)/2) / PBK;
@@ -988,7 +1157,7 @@ void CFpImgResizeDlg::OnBnClickedAnalysis()
 
 	// Read file contents
 	CFile file(path, CFile::modeRead);
-	int cnt = file.GetLength();
+	UINT cnt = (UINT)file.GetLength();
 	file.Read(m_bImageSrc, cnt);
 	file.Close();
 
@@ -1071,4 +1240,120 @@ void CFpImgResizeDlg::OnBnClickedAnalysis()
 	UpdateData(FALSE);
 	//MULTI_PROCESS();
 
+}
+
+
+void CFpImgResizeDlg::OnBnClickedConvert()
+{
+	// TODO: Add your control notification handler code here
+
+	UpdateData(TRUE);
+
+	if (m_fMulti) {
+		CString pn = SelectFolderDialog();
+		if (pn == "")	return;
+
+		MultiConvert(pn);
+	}
+	else {
+		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Raw Files(*.raw)|*.raw|Bmp Files (*.bmp)|*.bmp|All Files|*.*||"), this);
+		if (dlg.DoModal() == IDCANCEL) return;
+
+		CString path = dlg.GetPathName();
+		CString path_r;
+
+		CString extention = PathFindExtension(path);
+		if (extention == ".bmp")
+		{
+			ReadImageBmp(path, m_bImageSrc);
+
+			path_r.Format(_T("%s.raw"), path);
+		}
+		else if (extention == ".raw")
+		{
+			// Read file contents
+			CFile file(path, CFile::modeRead);
+			UINT cnt = (UINT)file.GetLength();
+			file.Read(m_bImageSrc, cnt);
+			file.Close();
+
+			path_r.Format(_T("%s.bmp"), path);
+		}
+		else return;
+
+		ImageView(m_bImageSrc, m_Width_Cvt, m_Height_Cvt, 0);
+
+		if (m_fSave) {
+			if (extention == ".bmp")
+			{
+				SaveImageRaw(path_r, m_bImageSrc, m_Width_Cvt * m_Height_Cvt);
+			}
+			else if (extention == ".raw")
+			{
+				SaveImageBmp(path_r, imadibSrc, m_Width_Cvt, m_Height_Cvt);
+			}
+
+		}
+
+	}
+
+
+	UpdateData(FALSE);
+}
+
+
+void CFpImgResizeDlg::OnBnClickedCancel()
+{
+	// TODO: Add your control notification handler code here
+	CDialogEx::OnCancel();
+}
+
+
+void CFpImgResizeDlg::OnEnChangeEditSrcwidth()
+{
+	// TODO:  If this is a RICHEDIT control, the control will not
+	// send this notification unless you override the CDialogEx::OnInitDialog()
+	// function and call CRichEditCtrl().SetEventMask()
+	// with the ENM_CHANGE flag ORed into the mask.
+
+	// TODO:  Add your control notification handler code here
+	m_nWidthSrc = m_Width_Src;
+}
+
+
+void CFpImgResizeDlg::OnEnChangeEditSrcheight()
+{
+	// TODO:  If this is a RICHEDIT control, the control will not
+	// send this notification unless you override the CDialogEx::OnInitDialog()
+	// function and call CRichEditCtrl().SetEventMask()
+	// with the ENM_CHANGE flag ORed into the mask.
+
+	// TODO:  Add your control notification handler code here
+
+	m_nHeightSrc = m_Height_Src;
+
+}
+
+
+void CFpImgResizeDlg::OnEnChangeEditDstwidth()
+{
+	// TODO:  If this is a RICHEDIT control, the control will not
+	// send this notification unless you override the CDialogEx::OnInitDialog()
+	// function and call CRichEditCtrl().SetEventMask()
+	// with the ENM_CHANGE flag ORed into the mask.
+
+	// TODO:  Add your control notification handler code here
+	m_nWidthDst = m_Width_Dst;
+}
+
+
+void CFpImgResizeDlg::OnEnChangeEditDstheight()
+{
+	// TODO:  If this is a RICHEDIT control, the control will not
+	// send this notification unless you override the CDialogEx::OnInitDialog()
+	// function and call CRichEditCtrl().SetEventMask()
+	// with the ENM_CHANGE flag ORed into the mask.
+
+	// TODO:  Add your control notification handler code here
+	m_nHeightDst = m_Height_Dst;
 }
