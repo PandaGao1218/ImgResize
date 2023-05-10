@@ -17,6 +17,8 @@
 #define IDC_CHECK_SAVE                  1007
 #define IDC_CHECK_MULTI                 1008
 #define IDC_CHECK_SHOW                  1009
+#define IDC_RESIZE2                     1009
+#define IDC_TRANSFORM                   1009
 #define IDC_CONVERT                     1010
 #define IDC_EDIT_CVTWIDTH               1012
 #define IDC_EDIT_CVTHEIGHT              1013
@@ -31,6 +33,7 @@
 #define IDC_MSG_RIGHT                   1022
 #define IDC_ANALYSIS                    1023
 #define IDC_STATIC10                    1024
+#define IDC_DETECT                      1025
 
 // Next default values for new objects
 // 
@@ -38,7 +41,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        130
 #define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         1024
+#define _APS_NEXT_CONTROL_VALUE         1026
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

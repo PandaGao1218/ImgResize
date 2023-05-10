@@ -38,7 +38,7 @@ public:
 	int m_Width_Src;
 	CStatic m_ftImage_Dst;
 	CStatic m_ftImage_Src;
-	afx_msg void OnBnClickedStart();
+	afx_msg void OnBnClickedResize();
 	void ReadImageBmp(CString filename, BYTE* image);
 	void ImageView(unsigned char* image, int width, int height, int viewNum);
 	int OnDrawImage(CDC* pDC, CRect rc, BYTE* image);
@@ -48,9 +48,12 @@ public:
 	int ImageResize(BYTE* srcImage, int sw, int sh, BYTE* dstImage, int dw, int dh);
 	int SaveImageBmp(CString fn, BYTE* imageBuf, int w, int h);
 	int SaveImageRaw(CString fn, BYTE* imageBuf, LONG64 length);
-	int MultiResize(CString path);
+	int SavePlaneText(CString fn, CString str);
+	int MultiResize(CString path, int kind);
 	int MultiConvert(CString path);
+	int MultiDetect(CString path);
 	afx_msg void OnBnClickedAnalysis();
+	CString LogPath;
 	CString m_msgLeft;
 	CString m_msgRight;
 	afx_msg void OnBnClickedConvert();
@@ -65,4 +68,9 @@ public:
 	afx_msg void OnEnChangeEditSrcheight();
 	afx_msg void OnEnChangeEditDstwidth();
 	afx_msg void OnEnChangeEditDstheight();
+	afx_msg void OnBnClickedDetect();
+	CButton m_btDetect;
+	CString OnReadImage();
+	afx_msg void OnEnChangeEditCvtwidth();
+	afx_msg void OnBnClickedTransform();
 };

@@ -9,6 +9,8 @@
 #include "FpImgResizeDlg.h"
 #include "afxdialogex.h"
 
+#include "my_algo.h"
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -60,14 +62,17 @@ BYTE m_bImageDst[1024 * 1024];
 BYTE imadibSrc[sizeof(BITMAPINFOHEADER) + sizeof(RGBQUAD) * 256 + 1024 * 1024];
 BYTE imadibDst[sizeof(BITMAPINFOHEADER) + sizeof(RGBQUAD) * 256 + 1024 * 1024];
 
-int  m_nWidthSrc = 256;
-int  m_nHeightSrc = 360;
-int  m_nImaSizeSrc = m_nWidthSrc * m_nHeightSrc;
+//int  m_nWidthSrc = 256;
+//int  m_nHeightSrc = 360;
+//int  m_nImaSizeSrc = m_nWidthSrc * m_nHeightSrc;
+//
+//int  m_nWidthDst = 208;
+//int  m_nHeightDst = 388;
+//int  m_nImaSizeDst = m_nWidthDst * m_nHeightDst;
 
-int  m_nWidthDst = 208;
-int  m_nHeightDst = 388;
-int  m_nImaSizeDst = m_nWidthDst * m_nHeightDst;
-
+#define		PROC_RESIZE			10
+#define		PROC_TRANSFORM		11
+#define		PROC_CONVERT		12
 
 // CFpImgResizeDlg dialog
 
@@ -81,8 +86,8 @@ CFpImgResizeDlg::CFpImgResizeDlg(CWnd* pParent /*=nullptr*/)
 	, m_fMulti(FALSE)
 	, m_msgLeft(_T(""))
 	, m_msgRight(_T(""))
-	, m_Height_Cvt(360)
-	, m_Width_Cvt(256)
+	, m_Height_Cvt(160)
+	, m_Width_Cvt(32)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
@@ -105,13 +110,14 @@ void CFpImgResizeDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_CONVERT, m_btConvert);
 	DDX_Control(pDX, IDC_ANALYSIS, m_btAnalysis);
 	DDX_Control(pDX, IDC_RESIZE, m_btResize);
+	DDX_Control(pDX, IDC_DETECT, m_btDetect);
 }
 
 BEGIN_MESSAGE_MAP(CFpImgResizeDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
-	ON_BN_CLICKED(IDC_RESIZE, &CFpImgResizeDlg::OnBnClickedStart)
+	ON_BN_CLICKED(IDC_RESIZE, &CFpImgResizeDlg::OnBnClickedResize)
 	ON_BN_CLICKED(IDC_ANALYSIS, &CFpImgResizeDlg::OnBnClickedAnalysis)
 	ON_BN_CLICKED(IDC_CONVERT, &CFpImgResizeDlg::OnBnClickedConvert)
 	ON_BN_CLICKED(IDCANCEL, &CFpImgResizeDlg::OnBnClickedCancel)
@@ -119,6 +125,9 @@ BEGIN_MESSAGE_MAP(CFpImgResizeDlg, CDialogEx)
 	ON_EN_CHANGE(IDC_EDIT_SRCHEIGHT, &CFpImgResizeDlg::OnEnChangeEditSrcheight)
 	ON_EN_CHANGE(IDC_EDIT_DSTWIDTH, &CFpImgResizeDlg::OnEnChangeEditDstwidth)
 	ON_EN_CHANGE(IDC_EDIT_DSTHEIGHT, &CFpImgResizeDlg::OnEnChangeEditDstheight)
+	ON_BN_CLICKED(IDC_DETECT, &CFpImgResizeDlg::OnBnClickedDetect)
+	ON_EN_CHANGE(IDC_EDIT_CVTWIDTH, &CFpImgResizeDlg::OnEnChangeEditCvtwidth)
+	ON_BN_CLICKED(IDC_TRANSFORM, &CFpImgResizeDlg::OnBnClickedTransform)
 END_MESSAGE_MAP()
 
 
@@ -218,11 +227,13 @@ BOOL CFpImgResizeDlg::OnInitDialog()
 
 	m_btnFont.CreatePointFont(300, _T("黑体"), NULL);
 	GetDlgItem(IDC_RESIZE)->SetFont(&m_btnFont);
+	GetDlgItem(IDC_TRANSFORM)->SetFont(&m_btnFont);
 	GetDlgItem(IDC_CONVERT)->SetFont(&m_btnFont);
 	GetDlgItem(IDC_ANALYSIS)->SetFont(&m_btnFont);
 	GetDlgItem(IDCANCEL)->SetFont(&m_btnFont);
 	GetDlgItem(IDC_CHECK_SAVE)->SetFont(&m_btnFont);
 	GetDlgItem(IDC_CHECK_MULTI)->SetFont(&m_btnFont);
+	GetDlgItem(IDC_DETECT)->SetFont(&m_btnFont);
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
@@ -276,8 +287,51 @@ HCURSOR CFpImgResizeDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+#define		DATA_SHIFT			16
 
-void CFpImgResizeDlg::OnBnClickedStart()
+void ImageTransform(BYTE* pImgIn, int width, int height, BYTE* pImgOut, int widthOut, int heightOut)
+{
+	int ifX, ifY, ifX1, ifY1, xmax, ymax;
+	int ir1, ir2, dx, dy;
+	BYTE byte, rgb1, rgb2, rgb3, rgb4, * ptrOut = pImgOut;
+	int xScale, yScale, fX, fY, x, y;
+
+	if (width == widthOut && height == heightOut) return;
+
+	xScale = (width << DATA_SHIFT) / widthOut;
+	yScale = (height << DATA_SHIFT) / heightOut;
+
+	xmax = width - 1;
+	ymax = height - 1;
+
+	for (y = 0; y < heightOut; y++) {
+		fY = y * yScale;
+		ifY = (fY >> DATA_SHIFT);
+		ifY1 = min(ymax, ifY + 1);
+		dy = fY - (ifY << DATA_SHIFT);
+		for (x = 0; x < widthOut; x++, ptrOut++) {
+			fX = x * xScale;
+			ifX = (fX >> DATA_SHIFT);
+			ifX1 = min(xmax, ifX + 1);
+			dx = fX - (ifX << DATA_SHIFT);
+			// Interpolate using the four nearest pixels in the source
+			rgb1 = pImgIn[ifY * width + ifX];
+			rgb2 = pImgIn[ifY * width + ifX1];
+			rgb3 = pImgIn[ifY1 * width + ifX];
+			rgb4 = pImgIn[ifY1 * width + ifX1];
+			// Interplate in x direction:
+			ir1 = rgb1 + (((rgb3 - rgb1) * dy) >> DATA_SHIFT);
+			ir2 = rgb2 + (((rgb4 - rgb2) * dy) >> DATA_SHIFT);
+			// Interpolate in y:
+			byte = (BYTE)(ir1 + (((ir2 - ir1) * dx) >> DATA_SHIFT));
+			// Set output
+			(*ptrOut) = byte;
+		}
+	}
+}
+
+
+void CFpImgResizeDlg::OnBnClickedResize()
 {
 	// TODO: Add your control notification handler code here
 
@@ -287,7 +341,7 @@ void CFpImgResizeDlg::OnBnClickedStart()
 		CString pn = SelectFolderDialog();
 		if (pn == "")	return;
 
-		MultiResize(pn);
+		MultiResize(pn, PROC_RESIZE);
 	}
 	else {
 		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Raw Files(*.raw)|*.raw|Bmp Files (*.bmp)|*.bmp|All Files|*.*||"), this);
@@ -301,7 +355,7 @@ void CFpImgResizeDlg::OnBnClickedStart()
 		{
 			ReadImageBmp(path, m_bImageSrc);
 
-			path_r.Format(_T("%s_%d_%d.bmp"), path, m_nWidthDst, m_nHeightDst);
+			path_r.Format(_T("%s_%d_%d.bmp"), path, m_Width_Dst, m_Height_Dst);
 		}
 		else if (extention == ".raw")
 		{
@@ -311,27 +365,27 @@ void CFpImgResizeDlg::OnBnClickedStart()
 			file.Read(m_bImageSrc, cnt);
 			file.Close();
 
-			path_r.Format(_T("%s_%d_%d.raw"), path, m_nWidthDst, m_nHeightDst);
+			path_r.Format(_T("%s_%d_%d.raw"), path, m_Width_Dst, m_Height_Dst);
 		}
 		else return;
 
-		ImageView(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, 0);
+		ImageView(m_bImageSrc, m_Width_Src, m_Height_Src, 0);
 
 		// Filtering
-		m_nWidthDst = m_Width_Dst;
-		m_nHeightDst = m_Height_Dst;
-		ImageResize(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, m_bImageDst, m_nWidthDst, m_nHeightDst);
+		ImageResize(m_bImageSrc, m_Width_Src, m_Height_Src, m_bImageDst, m_Width_Dst, m_Height_Dst);
 
-		ImageView(m_bImageDst, m_nWidthDst, m_nHeightDst, 2);
+		//ImageTransform(m_bImageSrc, m_Width_Src, m_Height_Src, m_bImageDst, m_Width_Dst, m_Height_Dst);
+
+		ImageView(m_bImageDst, m_Width_Dst, m_Height_Dst, 2);
 
 		if (m_fSave) {
 			if (extention == ".bmp")
 			{
-				SaveImageBmp(path_r, imadibDst, m_nWidthDst, m_nHeightDst);
+				SaveImageBmp(path_r, imadibDst, m_Width_Dst, m_Height_Dst);
 			}
 			else if (extention == ".raw")
 			{
-				SaveImageRaw(path_r, m_bImageDst, m_nWidthDst * m_nHeightDst);
+				SaveImageRaw(path_r, m_bImageDst, m_Width_Dst * m_Height_Dst);
 			}
 
 		}
@@ -365,8 +419,8 @@ void CFpImgResizeDlg::ReadImageBmp(CString filename, BYTE* image)
 
 	file.Read(&bmpInfo, sizeof(BITMAPINFOHEADER));
 
-	m_nWidthSrc = bmpInfo.biWidth;
-	m_nHeightSrc = bmpInfo.biHeight;
+	m_Width_Src = bmpInfo.biWidth;
+	m_Height_Src = bmpInfo.biHeight;
 
 	DWORD friction;
 	int channels;
@@ -374,11 +428,11 @@ void CFpImgResizeDlg::ReadImageBmp(CString filename, BYTE* image)
 	{
 	case 8:
 		channels = 1;
-		friction = (4 - (m_nWidthSrc & 3)) & 3;
+		friction = (4 - (m_Width_Src & 3)) & 3;
 		break;
 	case 24:
 		channels = 3;
-		friction = (4 - (m_nWidthSrc & 3)) & 3;
+		friction = (4 - (m_Width_Src & 3)) & 3;
 		break;
 	case 32:
 		channels = 4;
@@ -390,11 +444,11 @@ void CFpImgResizeDlg::ReadImageBmp(CString filename, BYTE* image)
 
 	BYTE buffer[4];
 	file.Seek(bmStart, CFile::begin);
-	for (int i = m_nHeightSrc - 1; i >= 0; i--) {
-		for (int j = 0; j < m_nWidthSrc; j++) {
+	for (int i = m_Height_Src - 1; i >= 0; i--) {
+		for (int j = 0; j < m_Width_Src; j++) {
 			file.Read(buffer, channels);
-			if (channels == 1) image[i * m_nWidthSrc + j] = buffer[0];
-			else image[i * m_nWidthSrc + j] = (BYTE)(0.11 * buffer[0] + 0.59 * buffer[1] + 0.3 * buffer[2]);
+			if (channels == 1) image[i * m_Width_Src + j] = buffer[0];
+			else image[i * m_Width_Src + j] = (BYTE)(0.11 * buffer[0] + 0.59 * buffer[1] + 0.3 * buffer[2]);
 		}
 		file.Read(buffer, friction);
 	}
@@ -548,7 +602,6 @@ int CFpImgResizeDlg::ImageResize(BYTE* srcImage, int sw, int sh, BYTE* dstImage,
 	return 1;
 }
 
-
 int CFpImgResizeDlg::SaveImageBmp(CString fn, BYTE* bmpImageBuf, int w, int h)
 {
 	// TODO: Add your implementation code here.
@@ -631,8 +684,39 @@ int CFpImgResizeDlg::SaveImageRaw(CString fn, BYTE* RawImageBuf, LONG64 length)
 	return 0;
 }
 
+int CFpImgResizeDlg::SavePlaneText(CString fn, CString str)
+{
+	// TODO: Add your implementation code here.
 
-int CFpImgResizeDlg::MultiResize(CString path)
+	CString filename;
+
+	filename = fn;
+
+	char* saveFileName = (LPSTR)(LPCTSTR)filename;
+
+	CStdioFile myFile;
+	CFileException fileException;
+
+	if (myFile.Open((LPCTSTR)filename, (CFile::modeNoTruncate | CFile::modeCreate | CFile::modeWrite), &fileException))
+	{
+//		myFile.Write(RawImageBuf, (UINT)length);
+		myFile.SeekToEnd();
+		myFile.WriteString(str);
+
+
+	}
+	else
+	{
+		TRACE("Can't open file %s,error=%u/n", saveFileName, fileException.m_cause);
+	}
+
+	myFile.Close();
+
+	return 0;
+
+}
+
+int CFpImgResizeDlg::MultiResize(CString path, int kind)
 {
 	// TODO: Add your implementation code here.
 
@@ -663,7 +747,7 @@ int CFpImgResizeDlg::MultiResize(CString path)
 		{
 			//FindAllFile(strParent+finder.GetFileName()+"\\");//递归打开文件夹   
 			CString subPn = finder.GetFileName();//文件夹名称
-			MultiResize(path + "\\" + subPn);
+			MultiResize(path + "\\" + subPn, kind);
 		}
 		else {
 			CString fn = path + "\\" + finder.GetFileName();//文件夹名称dlg.GetPathName();
@@ -672,23 +756,32 @@ int CFpImgResizeDlg::MultiResize(CString path)
 			CString fn_r;
 			if (fileExt == ".bmp") {
 				ReadImageBmp(fn, m_bImageSrc);
-				fn_r.Format(_T("%s_%d_%d.bmp"), fn, m_nWidthDst, m_nHeightDst);
+				fn_r.Format(_T("%s_%d_%d.bmp"), fn, m_Width_Dst, m_Height_Dst);
 
-				ImageView(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, 0);
+				ImageView(m_bImageSrc, m_Width_Src, m_Height_Src, 0);
 				//m_msg = "图像读取完成.";
 
 				// Filtering
 				//ImageFilterF(m_bImageOrigin);
-				m_nWidthDst = m_Width_Dst;
-				m_nHeightDst = m_Height_Dst;
-				ImageResize(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, m_bImageDst, m_nWidthDst, m_nHeightDst);
+				//m_nWidthDst = m_Width_Dst;
+				//m_nHeightDst = m_Height_Dst;
+				switch (kind) {
+				case PROC_RESIZE:		//	
+					ImageResize(m_bImageSrc, m_Width_Src, m_Height_Src, m_bImageDst, m_Width_Dst, m_Height_Dst);
+					break;
+				case PROC_TRANSFORM:
+					ImageTransform(m_bImageSrc, m_Width_Src, m_Height_Src, m_bImageDst, m_Width_Dst, m_Height_Dst);
+					break;
+				case PROC_CONVERT:
+					break;
+				}
 
-				ImageView(m_bImageDst, m_nWidthDst, m_nHeightDst, 2);
+				ImageView(m_bImageDst, m_Width_Dst, m_Height_Dst, 2);
 				//m_msg_new = "图像处理完成.";
 
 				//	save
 				if (m_fSave) {
-					SaveImageBmp(fn_r, imadibDst, m_nWidthDst, m_nHeightDst);
+					SaveImageBmp(fn_r, imadibDst, m_Width_Dst, m_Height_Dst);
 				}
 			}
 			else if (fileExt == ".raw") {
@@ -699,23 +792,23 @@ int CFpImgResizeDlg::MultiResize(CString path)
 				file.Read(m_bImageSrc, cnt);
 				file.Close();
 
-				fn_r.Format(_T("%s_%d_%d.raw"), fn, m_nWidthDst, m_nHeightDst);
+				fn_r.Format(_T("%s_%d_%d.raw"), fn, m_Width_Dst, m_Height_Dst);
 
-				ImageView(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, 0);
+				ImageView(m_bImageSrc, m_Width_Src, m_Height_Src, 0);
 				//m_msg = "图像读取完成.";
 
 				// Filtering
 				//ImageFilterF(m_bImageOrigin);
-				m_nWidthDst = m_Width_Dst;
-				m_nHeightDst = m_Height_Dst;
-				ImageResize(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, m_bImageDst, m_nWidthDst, m_nHeightDst);
+				//m_nWidthDst = m_Width_Dst;
+				//m_nHeightDst = m_Height_Dst;
+				ImageResize(m_bImageSrc, m_Width_Src, m_Height_Src, m_bImageDst, m_Width_Dst, m_Height_Dst);
 
-				ImageView(m_bImageDst, m_nWidthDst, m_nHeightDst, 2);
+				ImageView(m_bImageDst, m_Width_Dst, m_Height_Dst, 2);
 				//m_msg_new = "图像处理完成.";
 
 				//	save
 				if (m_fSave) {
-					SaveImageRaw(fn_r, m_bImageDst, m_nWidthDst*m_nHeightDst);
+					SaveImageRaw(fn_r, m_bImageDst, m_Width_Dst*m_Height_Dst);
 				}
 			}
 			else	continue;
@@ -798,312 +891,6 @@ int CFpImgResizeDlg::MultiConvert(CString path)
 	return 0;
 }
 
-void LAPI_IsFinger(unsigned char* image, int width, int height, int* gScore, int* aScore, int* wScore)
-{
-#define X_BLOCK		(10)
-#define Y_BLOCK		(10)
-#define GAP			(8)		//diff between rigde and valley
-#define	THRES1		(15)	//exist finger?, percent of black
-#define	THRES2		(90)	//wet, percent of black
-#define	THRES3		(90)	//dry, gray value
-#define	BAD_COFF	(0)		//weight
-
-	int WIDTH_SUB = width / X_BLOCK;
-	int HEIGHT_SUB = height / Y_BLOCK;
-	int hist[256], off1, off2;
-
-	int i, m, x, y, mx, my, c0, c1, c2;
-	int area = 0, valid = 0, dry = 0, wet = 0, black, white;
-
-	for (i = 0; i < 256; i++) hist[i] = 0;
-
-	for (i = 0; i < width * height; i++) {
-		m = image[i];
-		hist[m] ++;
-	}
-
-	mx = my = 0;
-	for (i = 0; i < 256; i++) {
-		mx += (i * hist[i]);
-		my += (1 * hist[i]);
-	}
-	if (my == 0)					//all black
-	{
-		*gScore = 0;
-		*aScore = 100;
-		*wScore = 100;				//0:normal, -100:dry, 100:wet 
-		return;
-	}
-	c0 = mx / my;						//center gray value
-
-	mx = my = 0;
-	for (i = 0; i < c0; i++) {
-		mx += (i * hist[i]);
-		my += (1 * hist[i]);
-	}
-	if (my == 0) {					//all white
-		c1 = 0;
-		*gScore = 0;
-		*aScore = 0;
-		*wScore = 0;				//0:normal, -100:dry, 100:wet 
-		return;
-	}
-	else c1 = mx / my;				//ridge gray value
-	if (c1 == 0)					//almost black
-	{
-		*gScore = 0;
-		*aScore = 100;
-		*wScore = 100;
-		return;
-	}
-
-	mx = my = 0;
-	for (i = c0; i < 256; i++) {
-		mx += (i * hist[i]);
-		my += (1 * hist[i]);
-	}
-	if (my == 0) c2 = 255;
-	else c2 = mx / my;				//valley gray value
-
-	if ((c2 - c1) < GAP)
-	{
-		*gScore = 0;
-		*aScore = 0;
-		*wScore = 0;				//0:normal, -100:dry, 100:wet 
-		return;
-	}
-
-	off1 = (c0 - c1) / 2;
-	off2 = (c2 - c0) / 2;
-
-	for (x = 0; x < X_BLOCK; x++)
-	{
-		for (y = 0; y < Y_BLOCK; y++)
-		{
-			black = 0; white = 0;
-			for (mx = 0; mx < WIDTH_SUB; mx++)
-			{
-				for (my = 0; my < HEIGHT_SUB; my++)
-				{
-					m = image[(y * HEIGHT_SUB + my) * width + x * WIDTH_SUB + mx];
-					if (m < (c0 - off1)) black++;						//ridge
-					else if (m > (c0 + off2)) white++;					//valley or background
-				}
-			}
-			if (black > (WIDTH_SUB * HEIGHT_SUB * THRES1 / 100))					//exist finger	
-			{
-				area++;
-				if (black > WIDTH_SUB * HEIGHT_SUB * THRES2 / 100) wet++;			//wet
-				else if (white > WIDTH_SUB * HEIGHT_SUB * THRES3 / 100) dry++;	//dry
-				else valid++;
-			}
-		}
-	}
-
-	m = max(wet, dry);
-	valid -= (BAD_COFF * m);
-	valid = max(0, valid);
-
-	*gScore = valid * 100 / (X_BLOCK * Y_BLOCK);
-	*aScore = area * 100 / (X_BLOCK * Y_BLOCK);
-	if (dry > wet) m = -m;
-	*wScore = m * 100 / (X_BLOCK * Y_BLOCK);
-}
-
-int getImageAreaScore(uint8_t* imgBuf, int width, int height) {
-
-#define X_BLOCK_1		(10)
-#define Y_BLOCK_1		(10)
-#define	OFFSET1_1		(20)	//for black, gray unit
-#define	OFFSET2_1		(0)		//for white, gray unit
-#define	THRES1_1		(10)	//exist finger?, percent of black
-#define	THRES2_1		(95)	//wet, percent of black
-#define	THRES3_1		(90)	//dry, gray value
-#define	BAD_COFF_1		(0)		//weight
-	int w, h;
-	int hist[256];
-
-	int i, m, x, y, mx, my, c0, c1;//, c2;
-	int valid = 0, dry = 0, wet = 0, black, white, ret = 0;
-	int WIDTH_SUB;
-	int HEIGHT_SUB;
-
-	w = 256;
-	h = 360;
-
-	WIDTH_SUB = w / X_BLOCK_1;
-	HEIGHT_SUB = h / Y_BLOCK_1;
-
-
-	for (i = 0; i < 256; i++) hist[i] = 0;
-
-	for (i = 0; i < w * h; i++) {
-		m = imgBuf[i];
-		hist[m] ++;
-	}
-
-	mx = my = 0;
-	for (i = 0; i < 256; i++) {
-		mx += (i * hist[i]);
-		my += (1 * hist[i]);
-	}
-	if (my == 0)					//all black
-	{
-		ret = 0;
-		goto go_end;
-	}
-	c0 = mx / my;						//center gray value
-
-	mx = my = 0;
-	for (i = 0; i < c0; i++) {
-		mx += (i * hist[i]);
-		my += (1 * hist[i]);
-	}
-	if (my == 0) {					//all white
-		ret = 0;
-		goto go_end;
-	}
-	else c1 = mx / my;				//ridge gray value
-	if (c1 == 0)					//almost black
-	{
-		ret = 0;
-		goto go_end;
-	}
-
-	mx = my = 0;
-	for (i = c0; i < 256; i++) {
-		mx += (i * hist[i]);
-		my += (1 * hist[i]);
-	}
-	if (my == 0)					//almost black
-	{
-		ret = 0;
-		goto go_end;
-	}
-	//else c2 = mx / my;			//valley gray value
-
-	for (x = 0; x < X_BLOCK_1; x++)
-	{
-		for (y = 0; y < Y_BLOCK_1; y++)
-		{
-			black = 0; white = 0;
-			for (mx = 0; mx < WIDTH_SUB; mx++)
-			{
-				for (my = 0; my < HEIGHT_SUB; my++)
-				{
-					m = imgBuf[(y * HEIGHT_SUB + my) * w + x * WIDTH_SUB + mx];
-					if (m < (c0 - OFFSET1_1)) black++;						//ridge
-					else if (m > (c0 + OFFSET2_1)) white++;					//valley or background
-				}
-			}
-			if (black > (WIDTH_SUB * HEIGHT_SUB * THRES1_1 / 100))					//exist finger
-			{
-				if (black > WIDTH_SUB * HEIGHT_SUB * THRES2_1 / 100) wet++;			//wet
-				else if (white > WIDTH_SUB * HEIGHT_SUB * THRES3_1 / 100) dry++;	//dry
-				else valid++;
-			}
-		}
-	}
-
-	m = max(wet, dry);
-	valid -= (BAD_COFF_1 * m);
-	valid = max(0, valid);
-	ret = valid * 100 / (X_BLOCK_1 * Y_BLOCK_1);
-	/*
-		for (i = 0; i < 256; i ++ ) hist[i] = 0;
-		cex = ((width -2*0)/2) / PBK;
-		cey = ((height-2*0)/2) / PBK;
-
-		for ( k = 0; k < 3; k ++ ) {
-			p = (k + 1) * (cey / 4);
-			yy = 2 * p * PBK + 0;
-			for ( q = 0; q < cex; q ++ ) {
-				xx = 2 * q * PBK + 0;
-				for ( i = 0; i < PBK; i ++ ) {
-					y = yy + 2*i;
-					for ( j = 0; j < PBK; j ++ ) {
-						x = xx + 2*j;
-						m = imgBuf [(y + (IM_CY-height)/2)*IM_CX+(x + (IM_CX-width)/2)];
-						hist[m] ++;
-					}
-				}
-			}
-		}
-
-		m1 = m2 = 0;
-		for (i = 0; i < 256; i ++ ) {
-			m1 += (i*hist[i]);
-			m2 += (1*hist[i]);
-		}
-		if (m2==0) return 0;
-		m = m1/m2;
-		m1 = m2 = 0;
-		for (i = 0; i < 256; i ++ ) {
-			n = i - m; if (n<0) n = -n;
-			m1 += (n*hist[i]);
-			m2 += (1*hist[i]);
-		}
-		ret = m1/m2;
-		ret = min(100,200*ret/128);
-		n = 0;
-		for (i = 0; i < m; i ++ ) n += hist[i];
-		ret = min(100,ret*2*n/m2);
-	*/
-	/*
-		#define PBK			4
-		int i, j, k, p, q, x, y;
-		int cex, cey, m, n;
-		int ret, d, xx, yy;
-		int cnt[3];
-		int sum;
-		cex = ((IM_CX -2*0)/2) / PBK;
-		cey = ((IM_CY-2*0)/2) / PBK;
-		 for ( k = 0; k < 3; k ++ ) {
-			p = (k + 1) * (cey / 4);
-			cnt[k] = 0;
-			for ( q = 0; q < cex; q ++ ) {
-				xx = 2 * q * PBK + 0;
-				yy = 2 * p * PBK + 0;
-				m = 0;
-				for ( i = 0; i < PBK; i ++ ) {
-					y = yy + 2*i;
-					for ( j = 0; j < PBK; j ++ ) {
-						x = xx + 2*j;
-						m += imgBuf [y*IM_CX+x];
-					}
-				}
-				m /= (PBK*PBK);
-				n = 0;
-				for ( i = 0; i < PBK; i ++ ) {
-					y = yy + 2*i;
-					for ( j = 0; j < PBK; j ++ ) {
-						x =  xx + 2*j;
-						d = m - imgBuf [y*IM_CX+x];
-						if ( d < 0 ) d = -d;
-						n += d;
-					}
-				}
-				n /= (PBK*PBK);
-				if (n>16) cnt[k] ++;
-			}
-		}
-		n = cex;
-		for ( k = 0; k < 3; k ++ ) {
-			if ( n > cnt[k] ) n = cnt[k];
-		}
-		sum = 1 * cex;
-		ret = 100 * n / sum;
-
-		if ( ret > 100 ) ret = 100;
-	*/
-
-go_end:
-
-
-
-	return ret;// 80;//45;
-}
-
 bool Image2Bytes(const CImage& img, BYTE** bytes, size_t& byteSize) {
 	if (img.IsNull()) return false;
 	IStream* pStrImg = NULL;
@@ -1143,97 +930,13 @@ void CFpImgResizeDlg::OnBnClickedAnalysis()
 {
 	// TODO: Add your control notification handler code here
 
-	CString path;
-
-	// TODO: 在此添加命令处理程序代码
-	CFileDialog fileDlg(TRUE);
-	fileDlg.m_ofn.lpstrFilter = _T("Raw Files(*.raw)\0*.raw\0Bitmap Files(*.bmp)\0*.bmp\0All Files(*.*)\0*.*\0\0");
-	if (IDOK == fileDlg.DoModal())
-	{
-		path = fileDlg.GetPathName();
-	}
-
-	CString extention = PathFindExtension(path);
-
-	// Read file contents
-	CFile file(path, CFile::modeRead);
-	UINT cnt = (UINT)file.GetLength();
-	file.Read(m_bImageSrc, cnt);
-	file.Close();
-
-	//load image to cimage class
-	CImage image;
-	if (extention == ".bmp")
-	{
-		image.Load(path);
-	}
-	else if (extention == ".raw")
-	{
-		image.Create(m_nWidthSrc, m_nHeightSrc, 8/*byte per pixcel*/);
-		//Bytes2Image(m_bImage, 256 * 360, image);
-
-		RGBQUAD* tab = new RGBQUAD[256];
-		for (int i = 0; i < 256; ++i)
-		{
-			tab[i].rgbRed = i;
-			tab[i].rgbGreen = i;
-			tab[i].rgbBlue = i;
-			tab[i].rgbReserved = 0;
-		}
-		image.SetColorTable(0, 256, tab);
-		delete[] tab;
-
-		// Copy pixel values
-		// Warining: does not convert from RGB to BGR
-		for (int i = 0; i < m_nHeightSrc; i++)
-		{
-			void* dst = image.GetPixelAddress(0, i);
-			const void* src = &m_bImageSrc[i * m_nWidthSrc]/* put the pointer to the i'th source row here */;
-			memcpy(dst, src, m_nWidthSrc);
-		}
-		//int pp = 0;
-		//for (int row = 0; row < m_nHeight; row++) {
-		//	for (int col = 0; col < m_nWidth; col++) {
-		//		BYTE px = m_bImage[pp++];
-		//		image.SetPixel(row, col, COLOR16(px));
-		//	}
-		//}
-	}
-	else
-	{
-		return;
-	}
-
-	// TODO: display image
-	CStatic* picturebox = (CStatic*)(GetDlgItem(IDC_IMAGE_SRC));
-	CRect rect;
-	picturebox->GetClientRect(rect);
-	// create CClientDC for picturebox
-	CClientDC dc(picturebox);
-	//load image to cBitmap class
-	CBitmap m_bitmap;
-	m_bitmap.Attach(image.Detach());
-	//create cdc to load bitmap
-	CDC memoryDC;
-	memoryDC.CreateCompatibleDC(&dc);
-	//add cbiteap to memoryoc object;
-	memoryDC.SelectObject(m_bitmap);
-	//get bitmap dimenation for m_bitmap
-	BITMAP bmp;
-	m_bitmap.GetBitmap(&bmp);
-	//set stretch build mode to color on color
-	dc.SetStretchBltMode(COLORONCOLOR);
-	dc.StretchBlt(rect.left, rect.top, rect.Width(), rect.Height(), &memoryDC, 0, 0, bmp.bmWidth, bmp.bmHeight, SRCCOPY);
-
-
-	//	calculation for score
-	UpdateData(TRUE);
+	CString path = OnReadImage();
 
 	int score = getImageAreaScore((uint8_t*)m_bImageSrc, 256, 360);
 	m_msgLeft.Format(_T("score:%d"), score);
 
 	int globalScore = 0, areaScore = 0, wetScore = 0;
-	LAPI_IsFinger(m_bImageSrc, m_nWidthSrc, m_nHeightSrc, &globalScore, &areaScore, &wetScore);
+	LAPI_IsFinger(m_bImageSrc, m_Width_Src, m_Height_Src, &globalScore, &areaScore, &wetScore);
 	m_msgLeft.Format(_T("file:%s"), path);
 	m_msgRight.Format(_T("score:%d, gscore:%d, aScore = %d, wScore = %d"), score, globalScore, areaScore, wetScore);
 
@@ -1251,6 +954,7 @@ void CFpImgResizeDlg::OnBnClickedConvert()
 
 	if (m_fMulti) {
 		CString pn = SelectFolderDialog();
+
 		if (pn == "")	return;
 
 		MultiConvert(pn);
@@ -1317,7 +1021,7 @@ void CFpImgResizeDlg::OnEnChangeEditSrcwidth()
 	// with the ENM_CHANGE flag ORed into the mask.
 
 	// TODO:  Add your control notification handler code here
-	m_nWidthSrc = m_Width_Src;
+//	m_nWidthSrc = m_Width_Src;
 }
 
 
@@ -1330,7 +1034,7 @@ void CFpImgResizeDlg::OnEnChangeEditSrcheight()
 
 	// TODO:  Add your control notification handler code here
 
-	m_nHeightSrc = m_Height_Src;
+//	m_nHeightSrc = m_Height_Src;
 
 }
 
@@ -1343,7 +1047,7 @@ void CFpImgResizeDlg::OnEnChangeEditDstwidth()
 	// with the ENM_CHANGE flag ORed into the mask.
 
 	// TODO:  Add your control notification handler code here
-	m_nWidthDst = m_Width_Dst;
+//	m_nWidthDst = m_Width_Dst;
 }
 
 
@@ -1355,5 +1059,336 @@ void CFpImgResizeDlg::OnEnChangeEditDstheight()
 	// with the ENM_CHANGE flag ORed into the mask.
 
 	// TODO:  Add your control notification handler code here
-	m_nHeightDst = m_Height_Dst;
+//	m_nHeightDst = m_Height_Dst;
+}
+
+
+int CFpImgResizeDlg::MultiDetect(CString path)
+{
+	// TODO: Add your implementation code here.
+
+	CString strText_i, str;
+	CFileFind finder;
+
+	//bool bFindFolder = finder.FindFile(path + "\\*.*");
+	//while (bFindFolder)
+	//{
+	//	bFindFolder = finder.FindNextFile();
+	//	if (finder.IsDots())
+	//		continue;
+	//	if (finder.IsDirectory())//是文件夹
+	//	{
+	//		//FindAllFile(strParent+finder.GetFileName()+"\\");//递归打开文件夹   
+
+	//	}
+
+	//}
+
+	bool bFind = finder.FindFile(path + "\\*.*");
+	while (bFind)
+	{
+		bFind = finder.FindNextFile();
+		if (finder.IsDots())
+			continue;
+		if (finder.IsDirectory())//是文件夹
+		{
+			//FindAllFile(strParent+finder.GetFileName()+"\\");//递归打开文件夹   
+			CString subPn = finder.GetFileName();//文件夹名称
+			MultiConvert(path + "\\" + subPn);
+		}
+		else {
+			int globalScore = 0, areaScore = 0, wetScore = 0;
+			
+			CString fn = path + "\\" + finder.GetFileName();//文件夹名称dlg.GetPathName();
+			int dotPos = fn.ReverseFind('.');
+			CString fileExt = fn.Right(fn.GetLength() - dotPos);
+			CString fn_r = LogPath;
+
+			if (fileExt == ".bmp") {
+				ReadImageBmp(fn, m_bImageSrc);
+
+				ImageView(m_bImageSrc, m_Width_Cvt, m_Height_Cvt, 0);
+
+				int score = getImageAreaScore((uint8_t*)m_bImageSrc, m_Width_Cvt, m_Height_Cvt);
+				LAPI_IsFinger(m_bImageSrc, m_Width_Src, m_Height_Src, &globalScore, &areaScore, &wetScore);
+
+				m_msgRight.Format(_T("file:%s ==> score:%d, gscore:%d, aScore = %d, wScore = %d\r\n"), fn, score, globalScore, areaScore, wetScore);
+				m_msgRight.Format(_T("%d %d %d %d\n"), score, globalScore, areaScore, wetScore);
+
+				//	save
+				if (m_fSave) {
+					SavePlaneText(fn_r, m_msgRight);
+				}
+			}
+			else if (fileExt == ".raw") {
+
+				// Read file contents
+				CFile file(fn, CFile::modeRead);
+				UINT cnt = (UINT)file.GetLength();
+				file.Read(m_bImageSrc, cnt);
+				file.Close();
+
+				ImageView(m_bImageSrc, m_Width_Cvt, m_Height_Cvt, 0);
+
+				int score = getImageAreaScore((uint8_t*)m_bImageSrc, m_Width_Cvt, m_Height_Cvt);
+
+				LAPI_IsFinger(m_bImageSrc, m_Width_Src, m_Height_Src, &globalScore, &areaScore, &wetScore);
+
+				m_msgRight.Format(_T("file:%s ==> score:%d, gscore:%d, aScore = %d, wScore = %d\r\n"), fn, score, globalScore, areaScore, wetScore);
+				m_msgRight.Format(_T("%d %d %d %d\n"), score, globalScore, areaScore, wetScore);
+
+				//	save
+				if (m_fSave) {
+					SavePlaneText(fn_r, m_msgRight);
+				}
+			}
+			else	continue;
+		}
+	}
+
+	return 0;
+}
+
+void CFpImgResizeDlg::OnBnClickedDetect()
+{
+	// TODO: Add your control notification handler code here
+
+	UpdateData(TRUE);
+
+	if (m_fMulti) {
+		CString pn = SelectFolderDialog();
+
+		if (pn == "")	return;
+
+		LogPath.Format(_T("%s\scoreLog.txt"), pn);
+
+		MultiDetect(pn);
+	}
+	else {
+
+		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Bmp Files (*.bmp)|*.bmp|Raw Files(*.raw)|*.raw|All Files|*.*||"), this);
+		if (dlg.DoModal() == IDCANCEL) return;
+
+		CString path = dlg.GetPathName();
+		CString path_r;
+
+		CString extention = PathFindExtension(path);
+		if (extention == ".bmp")
+		{
+			ReadImageBmp(path, m_bImageSrc);
+
+			path_r.Format(_T("%s_%d_%d.bmp"), path, m_Width_Cvt, m_Height_Cvt);
+		}
+		else if (extention == ".raw")
+		{
+			// Read file contents
+			CFile file(path, CFile::modeRead);
+			UINT cnt = (UINT)file.GetLength();
+			file.Read(m_bImageSrc, cnt);
+			file.Close();
+
+			path_r.Format(_T("%s_%d_%d.raw"), path, m_Width_Cvt, m_Height_Cvt);
+		}
+		else return;
+
+		ImageView(m_bImageSrc, m_Width_Cvt, m_Height_Cvt, 0);
+
+		int globalScore = 0, areaScore = 0, wetScore = 0;
+
+		int score = getImageAreaScore((uint8_t*)m_bImageSrc, m_Width_Cvt, m_Height_Cvt);
+		m_msgLeft.Format(_T("score:%d"), score);
+
+		LAPI_IsFinger(m_bImageSrc, m_Width_Cvt, m_Height_Cvt, &globalScore, &areaScore, &wetScore);
+		m_msgLeft.Format(_T("file:%s"), path);
+		m_msgRight.Format(_T("score:%d, gscore:%d, aScore = %d, wScore = %d"), score, globalScore, areaScore, wetScore);
+
+		//if (globalScore >= g_stDeviceInfo.m_byFPCheckScore) return FINGER_ERR_SUCCESS;
+		////	if (globalScore < AREA_THRES) return FINGER_ERR_FP_NOT_DETECTED;
+		//if (areaScore < AREA_THRES) return FINGER_ERR_FP_NOT_DETECTED;
+		//if (areaScore < g_stDeviceInfo.m_byFPCheckScore) return FINGER_ERR_SMALL_AREA;
+		//if (wetScore > 0) return FINGER_ERR_WET_FINGER;
+		//if (wetScore < 0) return FINGER_ERR_DRY_FINGER;
+	}
+
+
+
+
+
+	UpdateData(FALSE);
+
+}
+
+
+CString CFpImgResizeDlg::OnReadImage()
+{
+	// TODO: Add your implementation code here.
+
+	CString path;
+
+	// TODO: 在此添加命令处理程序代码
+	CFileDialog fileDlg(TRUE);
+	fileDlg.m_ofn.lpstrFilter = _T("Bitmap Files(*.bmp)\0*.bmp\0Raw Files(*.raw)\0*.raw\0All Files(*.*)\0*.*\0\0");
+	if (IDOK == fileDlg.DoModal())
+	{
+		path = fileDlg.GetPathName();
+	}
+
+	CString extention = PathFindExtension(path);
+
+	// Read file contents
+	CFile file(path, CFile::modeRead);
+	UINT cnt = (UINT)file.GetLength();
+	file.Read(m_bImageSrc, cnt);
+	file.Close();
+
+	//load image to cimage class
+	CImage image;
+	if (extention == ".bmp")
+	{
+		image.Load(path);
+	}
+	else if (extention == ".raw")
+	{
+		image.Create(m_Width_Src, m_Height_Src, 8/*byte per pixcel*/);
+		//Bytes2Image(m_bImage, 256 * 360, image);
+
+		RGBQUAD* tab = new RGBQUAD[256];
+		for (int i = 0; i < 256; ++i)
+		{
+			tab[i].rgbRed = i;
+			tab[i].rgbGreen = i;
+			tab[i].rgbBlue = i;
+			tab[i].rgbReserved = 0;
+		}
+		image.SetColorTable(0, 256, tab);
+		delete[] tab;
+
+		// Copy pixel values
+		// Warining: does not convert from RGB to BGR
+		for (int i = 0; i < m_Height_Src; i++)
+		{
+			void* dst = image.GetPixelAddress(0, i);
+			const void* src = &m_bImageSrc[i * m_Width_Src]/* put the pointer to the i'th source row here */;
+			memcpy(dst, src, m_Width_Src);
+		}
+		//int pp = 0;
+		//for (int row = 0; row < m_nHeight; row++) {
+		//	for (int col = 0; col < m_nWidth; col++) {
+		//		BYTE px = m_bImage[pp++];
+		//		image.SetPixel(row, col, COLOR16(px));
+		//	}
+		//}
+	}
+	else
+	{
+		return path;
+	}
+
+	// TODO: display image
+	CStatic* picturebox = (CStatic*)(GetDlgItem(IDC_IMAGE_SRC));
+	CRect rect;
+	picturebox->GetClientRect(rect);
+	// create CClientDC for picturebox
+	CClientDC dc(picturebox);
+	//load image to cBitmap class
+	CBitmap m_bitmap;
+	m_bitmap.Attach(image.Detach());
+	//create cdc to load bitmap
+	CDC memoryDC;
+	memoryDC.CreateCompatibleDC(&dc);
+	//add cbiteap to memoryoc object;
+	memoryDC.SelectObject(m_bitmap);
+	//get bitmap dimenation for m_bitmap
+	BITMAP bmp;
+	m_bitmap.GetBitmap(&bmp);
+	//set stretch build mode to color on color
+	dc.SetStretchBltMode(COLORONCOLOR);
+	dc.StretchBlt(rect.left, rect.top, rect.Width(), rect.Height(), &memoryDC, 0, 0, bmp.bmWidth, bmp.bmHeight, SRCCOPY);
+
+
+	//	calculation for score
+	UpdateData(TRUE);
+
+	return path;
+
+}
+
+
+void CFpImgResizeDlg::OnEnChangeEditCvtwidth()
+{
+	// TODO:  If this is a RICHEDIT control, the control will not
+	// send this notification unless you override the CDialogEx::OnInitDialog()
+	// function and call CRichEditCtrl().SetEventMask()
+	// with the ENM_CHANGE flag ORed into the mask.
+
+	// TODO:  Add your control notification handler code here
+
+}
+
+
+void CFpImgResizeDlg::OnBnClickedTransform()
+{
+	// TODO: Add your control notification handler code here
+
+	UpdateData(TRUE);
+
+	if (m_fMulti) {
+		CString pn = SelectFolderDialog();
+		if (pn == "")	return;
+
+		MultiResize(pn, PROC_TRANSFORM);
+	}
+	else {
+		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Raw Files(*.raw)|*.raw|Bmp Files (*.bmp)|*.bmp|All Files|*.*||"), this);
+		if (dlg.DoModal() == IDCANCEL) return;
+
+		CString path = dlg.GetPathName();
+		CString path_r;
+
+		CString extention = PathFindExtension(path);
+		if (extention == ".bmp")
+		{
+			ReadImageBmp(path, m_bImageSrc);
+
+			path_r.Format(_T("%s_%d_%d.bmp"), path, m_Width_Dst, m_Height_Dst);
+		}
+		else if (extention == ".raw")
+		{
+			// Read file contents
+			CFile file(path, CFile::modeRead);
+			UINT cnt = (UINT)file.GetLength();
+			file.Read(m_bImageSrc, cnt);
+			file.Close();
+
+			path_r.Format(_T("%s_%d_%d.raw"), path, m_Width_Dst, m_Height_Dst);
+		}
+		else return;
+
+		ImageView(m_bImageSrc, m_Width_Src, m_Height_Src, 0);
+
+		// Filtering
+		//m_nWidthDst = m_Width_Dst;
+		//m_nHeightDst = m_Height_Dst;
+		
+		ImageTransform(m_bImageSrc, m_Width_Src, m_Height_Src, m_bImageDst, m_Width_Dst, m_Height_Dst);
+
+		ImageView(m_bImageDst, m_Width_Dst, m_Height_Dst, 2);
+
+		if (m_fSave) {
+			if (extention == ".bmp")
+			{
+				SaveImageBmp(path_r, imadibDst, m_Width_Dst, m_Height_Dst);
+			}
+			else if (extention == ".raw")
+			{
+				SaveImageRaw(path_r, m_bImageDst, m_Width_Dst * m_Height_Dst);
+			}
+
+		}
+		//		m_msg_new = "图像处理完成.";
+
+	}
+
+	UpdateData(FALSE);
+
 }
