@@ -338,10 +338,14 @@ void CFpImgResizeDlg::OnBnClickedResize()
 	UpdateData(TRUE);
 
 	if (m_fMulti) {
-		CString pn = SelectFolderDialog();
-		if (pn == "")	return;
+		CFolderPickerDialog cfd(NULL, 0, this, 0);
 
-		MultiResize(pn, PROC_RESIZE);
+		if (cfd.DoModal() == IDOK)
+		{
+			CString strFolder = cfd.GetPathName();
+
+			MultiResize(strFolder, PROC_RESIZE);
+		}
 	}
 	else {
 		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Raw Files(*.raw)|*.raw|Bmp Files (*.bmp)|*.bmp|All Files|*.*||"), this);
@@ -858,7 +862,11 @@ int CFpImgResizeDlg::MultiConvert(CString path)
 			CString fn_r;
 			if (fileExt == ".bmp") {
 				ReadImageBmp(fn, m_bImageSrc);
-				fn_r.Format(_T("%s.raw"), fn);
+
+				DeleteFile(fn);
+
+				//fn_r.Format(_T("%s.raw"), fn);
+				fn_r.Format(_T("%s.raw"), fn.Left(dotPos));
 
 				ImageView(m_bImageSrc, m_Width_Cvt, m_Height_Cvt, 0);
 
@@ -875,7 +883,10 @@ int CFpImgResizeDlg::MultiConvert(CString path)
 				file.Read(m_bImageSrc, cnt);
 				file.Close();
 
-				fn_r.Format(_T("%s.bmp"), fn);
+				DeleteFile(fn);
+
+				//fn_r.Format(_T("%s.bmp"), fn);
+				fn_r.Format(_T("%s.bmp"), fn.Left(dotPos));
 
 				ImageView(m_bImageSrc, m_Width_Cvt, m_Height_Cvt, 0);
 
@@ -926,19 +937,160 @@ bool Bytes2Image(const BYTE* bytes, const size_t byteSize, CImage& img) {
 	return true;
 }
 
+void calc_histogram(uint8_t* I, int* H, int rows, int cols)
+{
+	int n, N = rows * cols;
+	for (n = 0; n < 256; n++) H[n] = 0;
+	for (n = 0; n < N; n++) H[I[n]]++;
+}
+void check_histogram_1(int* H, int th1, int th2, uint8_t* c)
+{
+	// c[0] < c[1] < c[2]
+	// c[0]: low  limit of gray level
+	// c[1]: center of gray range
+	// c[2]: high limit of gray level
+
+	int i, sum, c0, c1, c2;
+
+	// darkness
+	sum = 0; c0 = 0;
+	for (i = 0; i < 256; i++) {
+		sum += H[i];
+		if (sum > th1) {
+			c0 = i;
+			break;
+		}
+	}
+
+	// lightness
+	sum = 0; c2 = 255;
+	for (i = 255; i >= 0; i--) {
+		sum += H[i];
+		if (sum > th2) {
+			c2 = i;
+			break;
+		}
+	}
+
+	c1 = (c0 + c2) / 2;
+
+	c[0] = (uint8_t)c0;
+	c[1] = (uint8_t)c1;
+	c[2] = (uint8_t)c2;
+
+}
+uint8_t otsu_thresh_2(int* counts)
+{
+	uint8_t id2, id3, id, th, id1[256];
+	int i, num_bins, sumcounts, n, sumth;
+	float mu_t, maxval, pi, sump, summu, prevsigma, sigmai, maxval2, ts, temp;
+	float omega[256], mu[256], sigma[256], dsigma[256];
+
+	//
+	num_bins = 256;
+	sumcounts = 0;
+	for (i = 0; i < num_bins; i++)
+		sumcounts += counts[i];
+
+	//
+	sump = 0; summu = 0;
+	for (i = 0; i < num_bins; i++) {
+
+		pi = (float)counts[i] / sumcounts;
+		sump += pi;
+		summu += (pi * i);
+
+		omega[i] = sump;
+		mu[i] = summu;
+
+	}
+	mu_t = mu[num_bins - 1];
+
+	//
+	maxval = 0;
+	for (i = 0; i < num_bins; i++) {
+		temp = mu_t * omega[i] - mu[i];
+		sigmai = temp * temp / (omega[i] * (1.0f - omega[i]));
+		if (sigmai > maxval)
+			maxval = sigmai;
+		sigma[i] = sigmai;
+		if (i == 0)
+			dsigma[i] = 0.0f;
+		else
+			dsigma[i] = (float)fabs((double)(sigmai - prevsigma));
+		prevsigma = sigmai;
+	}
+
+	//
+	maxval2 = maxval / 2.0f;
+	for (i = 0; i < num_bins; i++)
+		id1[i] = sigma[i] > maxval2;
+	ts = 1.0f;
+	while (1) {
+
+		n = 0; sumth = 0;
+		for (i = 0; i < num_bins; i++) {
+			id2 = dsigma[i] < ts;
+			id3 = id1[i] * id2;
+			id = id3 > 0;
+			if (id > 0) {
+				n++;
+				th = (uint8_t)i;
+				sumth += (int)th;
+			}
+		}
+		if (n == 0) {
+			ts = ts + 1.0f;
+			if (ts >= 50.0f) {
+				n = 1;
+				sumth = 128;
+				break;
+			}
+		}
+		else
+			break;
+
+	}
+	return (uint8_t)(sumth / n);
+}
+//
+int image_score(uint8_t* I)
+{
+	uint8_t th;
+	uint8_t C[3];
+	int n, rows, cols, H[256], H2[256], sum, N, score;
+
+	rows = 360; cols = 256; N = rows * cols;
+
+	calc_histogram(I, H, rows, cols);
+	check_histogram_1(H, 1024, 1024, C);
+	th = otsu_thresh_2(H);
+
+	sum = 0;
+	for (n = 0; n < N; n++) {
+		if (I[n] < th) sum++;
+	}
+	return (sum * 100) / N;
+}
+
+
 void CFpImgResizeDlg::OnBnClickedAnalysis()
 {
 	// TODO: Add your control notification handler code here
 
 	CString path = OnReadImage();
 
-	int score = getImageAreaScore((uint8_t*)m_bImageSrc, 256, 360);
-	m_msgLeft.Format(_T("score:%d"), score);
+//	int score = getImageAreaScore((uint8_t*)m_bImageSrc, 256, 360);
+//	m_msgLeft.Format(_T("score:%d"), score);
 
-	int globalScore = 0, areaScore = 0, wetScore = 0;
-	LAPI_IsFinger(m_bImageSrc, m_Width_Src, m_Height_Src, &globalScore, &areaScore, &wetScore);
+//	int globalScore = 0, areaScore = 0, wetScore = 0;
+//	LAPI_IsFinger(m_bImageSrc, m_Width_Src, m_Height_Src, &globalScore, &areaScore, &wetScore);
 	m_msgLeft.Format(_T("file:%s"), path);
-	m_msgRight.Format(_T("score:%d, gscore:%d, aScore = %d, wScore = %d"), score, globalScore, areaScore, wetScore);
+//	m_msgRight.Format(_T("score:%d, gscore:%d, aScore = %d, wScore = %d"), score, globalScore, areaScore, wetScore);
+
+
+	int sc = image_score(m_bImageSrc);
+	m_msgRight.Format(_T("score:%d"), sc);
 
 	UpdateData(FALSE);
 	//MULTI_PROCESS();
@@ -953,11 +1105,21 @@ void CFpImgResizeDlg::OnBnClickedConvert()
 	UpdateData(TRUE);
 
 	if (m_fMulti) {
-		CString pn = SelectFolderDialog();
 
-		if (pn == "")	return;
+//		CString pn = SelectFolderDialog();
 
-		MultiConvert(pn);
+//		if (pn == "")	return;
+
+//		MultiConvert(pn);
+		CFolderPickerDialog cfd(NULL, 0, this, 0);
+
+		if (cfd.DoModal() == IDOK)
+		{
+			CString strFolder = cfd.GetPathName();
+
+			MultiConvert(strFolder);
+		}
+		
 	}
 	else {
 		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Raw Files(*.raw)|*.raw|Bmp Files (*.bmp)|*.bmp|All Files|*.*||"), this);
@@ -1149,20 +1311,45 @@ int CFpImgResizeDlg::MultiDetect(CString path)
 	return 0;
 }
 
+unsigned char ztemp[1024];
+UINT32* ptemp;
+UINT32 aaaaa1, aaaaa2, aaaaa3, aaaaa4;
+unsigned char aa1, aa2, aa3, aa4;
 void CFpImgResizeDlg::OnBnClickedDetect()
 {
 	// TODO: Add your control notification handler code here
 
 	UpdateData(TRUE);
 
+
+	//for (int i = 0; i < 1024; i++) {
+	//	ztemp[i] = (unsigned char)(i & 0xFF);
+	//}
+
+	//ptemp = (UINT32*)ztemp;
+
+	//aaaaa1 = *ptemp;	ptemp++;
+	//aaaaa2 = *ptemp;	ptemp++;
+	//aaaaa3 = *ptemp;	ptemp++;
+	//aaaaa4 = *ptemp;	ptemp++;
+
+	//aa1 = (aaaaa2 >> 0) & 0xff;
+	//aa2 = (aaaaa2 >> 8) & 0xff;
+	//aa3 = (aaaaa2 >> 16) & 0xff;
+	//aa4 = (aaaaa2 >> 24) & 0xff;
+
+	//return;
 	if (m_fMulti) {
-		CString pn = SelectFolderDialog();
+		CFolderPickerDialog cfd(NULL, 0, this, 0);
 
-		if (pn == "")	return;
+		if (cfd.DoModal() == IDOK)
+		{
+			CString strFolder = cfd.GetPathName();
 
-		LogPath.Format(_T("%s\scoreLog.txt"), pn);
+			LogPath.Format(_T("%s\scoreLog.txt"), strFolder);
 
-		MultiDetect(pn);
+			MultiDetect(strFolder);
+		}
 	}
 	else {
 
@@ -1333,10 +1520,14 @@ void CFpImgResizeDlg::OnBnClickedTransform()
 	UpdateData(TRUE);
 
 	if (m_fMulti) {
-		CString pn = SelectFolderDialog();
-		if (pn == "")	return;
+		CFolderPickerDialog cfd(NULL, 0, this, 0);
 
-		MultiResize(pn, PROC_TRANSFORM);
+		if (cfd.DoModal() == IDOK)
+		{
+			CString strFolder = cfd.GetPathName();
+
+			MultiResize(strFolder, PROC_TRANSFORM);
+		}
 	}
 	else {
 		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Raw Files(*.raw)|*.raw|Bmp Files (*.bmp)|*.bmp|All Files|*.*||"), this);
