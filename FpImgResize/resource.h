@@ -20,6 +20,7 @@
 #define IDC_RESIZE2                     1009
 #define IDC_TRANSFORM                   1009
 #define IDC_CONVERT                     1010
+#define IDC_CUTTING                     1011
 #define IDC_EDIT_CVTWIDTH               1012
 #define IDC_EDIT_CVTHEIGHT              1013
 #define IDC_STATIC7                     1014
@@ -34,6 +35,8 @@
 #define IDC_ANALYSIS                    1023
 #define IDC_STATIC10                    1024
 #define IDC_DETECT                      1025
+#define IDC_CUTTING2                    1026
+#define IDC_EXPAND                      1026
 
 // Next default values for new objects
 // 

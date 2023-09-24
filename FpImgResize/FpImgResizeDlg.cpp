@@ -59,6 +59,8 @@ END_MESSAGE_MAP()
 BYTE m_bImageSrc[1024 * 1024];
 BYTE m_bImageDst[1024 * 1024];
 
+BYTE m_bImageTmp[1024 * 1024];
+
 BYTE imadibSrc[sizeof(BITMAPINFOHEADER) + sizeof(RGBQUAD) * 256 + 1024 * 1024];
 BYTE imadibDst[sizeof(BITMAPINFOHEADER) + sizeof(RGBQUAD) * 256 + 1024 * 1024];
 
@@ -128,6 +130,8 @@ BEGIN_MESSAGE_MAP(CFpImgResizeDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_DETECT, &CFpImgResizeDlg::OnBnClickedDetect)
 	ON_EN_CHANGE(IDC_EDIT_CVTWIDTH, &CFpImgResizeDlg::OnEnChangeEditCvtwidth)
 	ON_BN_CLICKED(IDC_TRANSFORM, &CFpImgResizeDlg::OnBnClickedTransform)
+	ON_BN_CLICKED(IDC_CUTTING, &CFpImgResizeDlg::OnBnClickedCutting)
+	ON_BN_CLICKED(IDC_EXPAND, &CFpImgResizeDlg::OnBnClickedExpand)
 END_MESSAGE_MAP()
 
 
@@ -902,6 +906,157 @@ int CFpImgResizeDlg::MultiConvert(CString path)
 	return 0;
 }
 
+int CFpImgResizeDlg::MultiCutting(CString path)
+{
+	// TODO: Add your implementation code here.
+
+	CString strText_i, str;
+	CFileFind finder;
+
+	bool bFind = finder.FindFile(path + "\\*.*");
+	while (bFind)
+	{
+		bFind = finder.FindNextFile();
+		if (finder.IsDots())
+			continue;
+		if (finder.IsDirectory())//是文件夹
+		{
+			//FindAllFile(strParent+finder.GetFileName()+"\\");//递归打开文件夹   
+			CString subPn = finder.GetFileName();//文件夹名称
+			MultiCutting(path + "\\" + subPn);
+		}
+		else {
+			CString fn = path + "\\" + finder.GetFileName();//文件夹名称dlg.GetPathName();
+			int dotPos = fn.ReverseFind('.');
+			CString fileExt = fn.Right(fn.GetLength() - dotPos);
+			CString fn_r;
+			if (fileExt == ".bmp") {
+				ReadImageBmp(fn, m_bImageSrc);
+
+				DeleteFile(fn);
+
+				//fn_r.Format(_T("%s.raw"), fn);
+				fn_r.Format(_T("%s.bmp"), fn.Left(dotPos));
+
+				for (int kk = 0; kk < 160; kk++) {
+					memcpy(m_bImageTmp + 64 * kk, m_bImageSrc + 80 * kk, 64);
+				}
+
+				ImageView(m_bImageTmp, 64, 160, 0);
+
+				//	save
+				if (m_fSave) {
+					SaveImageBmp(fn_r, imadibSrc, 64, 160);
+				}
+			}
+			else if (fileExt == ".raw") {
+
+				// Read file contents
+				CFile file(fn, CFile::modeRead);
+				UINT cnt = (UINT)file.GetLength();
+				file.Read(m_bImageSrc, cnt);
+				file.Close();
+
+				DeleteFile(fn);
+
+				//fn_r.Format(_T("%s.bmp"), fn);
+				fn_r.Format(_T("%s.raw"), fn.Left(dotPos));
+
+				for (int kk = 0; kk < 160; kk++) {
+					memcpy(m_bImageTmp + 64 * kk, m_bImageSrc + 80 * kk, 64);
+				}
+
+				ImageView(m_bImageTmp, 64, 160, 0);
+
+				//	save
+				if (m_fSave) {
+					SaveImageRaw(fn_r, imadibSrc, 64 * 160);
+				}
+			}
+			else	continue;
+		}
+	}
+
+	return 0;
+}
+
+int CFpImgResizeDlg::MultiExpand(CString path)
+{
+	// TODO: Add your implementation code here.
+
+	CString strText_i, str;
+	CFileFind finder;
+
+	bool bFind = finder.FindFile(path + "\\*.*");
+	while (bFind)
+	{
+		bFind = finder.FindNextFile();
+		if (finder.IsDots())
+			continue;
+		if (finder.IsDirectory())//是文件夹
+		{
+			//FindAllFile(strParent+finder.GetFileName()+"\\");//递归打开文件夹   
+			CString subPn = finder.GetFileName();//文件夹名称
+			MultiExpand(path + "\\" + subPn);
+		}
+		else {
+			CString fn = path + "\\" + finder.GetFileName();//文件夹名称dlg.GetPathName();
+			int dotPos = fn.ReverseFind('.');
+			CString fileExt = fn.Right(fn.GetLength() - dotPos);
+			CString fn_r;
+			if (fileExt == ".bmp") {
+				ReadImageBmp(fn, m_bImageSrc);
+
+				DeleteFile(fn);
+
+				//fn_r.Format(_T("%s.raw"), fn);
+				fn_r.Format(_T("%s.bmp"), fn.Left(dotPos));
+
+				memset(m_bImageTmp, 0, 80 * 160);
+				for (int kk = 0; kk < 160; kk++) {
+					memcpy(m_bImageTmp + 80 * kk, m_bImageSrc + 64 * kk, 32);
+					memcpy(m_bImageTmp + 80 * kk + 32 + 7, m_bImageSrc + 64 * kk + 32, 32);
+				}
+
+				ImageView(m_bImageTmp, 80, 160, 0);
+
+				//	save
+				if (m_fSave) {
+					SaveImageBmp(fn_r, imadibSrc, 80, 160);
+				}
+			}
+			else if (fileExt == ".raw") {
+
+				// Read file contents
+				CFile file(fn, CFile::modeRead);
+				UINT cnt = (UINT)file.GetLength();
+				file.Read(m_bImageSrc, cnt);
+				file.Close();
+
+				DeleteFile(fn);
+
+				//fn_r.Format(_T("%s.bmp"), fn);
+				fn_r.Format(_T("%s.raw"), fn.Left(dotPos));
+
+				for (int kk = 0; kk < 160; kk++) {
+					memcpy(m_bImageTmp + 80 * kk, m_bImageSrc + 64 * kk, 32);
+					memcpy(m_bImageTmp + 80 * kk + 32 + 7, m_bImageSrc + 64 * kk + 32, 32);
+				}
+
+				ImageView(m_bImageTmp, 80, 160, 0);
+
+				//	save
+				if (m_fSave) {
+					SaveImageRaw(fn_r, imadibSrc, 80 * 160);
+				}
+			}
+			else	continue;
+		}
+	}
+
+	return 0;
+}
+
 bool Image2Bytes(const CImage& img, BYTE** bytes, size_t& byteSize) {
 	if (img.IsNull()) return false;
 	IStream* pStrImg = NULL;
@@ -1582,4 +1737,146 @@ void CFpImgResizeDlg::OnBnClickedTransform()
 
 	UpdateData(FALSE);
 
+}
+
+
+void CFpImgResizeDlg::OnBnClickedCutting()
+{
+	// TODO: Add your control notification handler code here
+
+	UpdateData(TRUE);
+
+	if (m_fMulti) {
+
+		//		CString pn = SelectFolderDialog();
+
+		//		if (pn == "")	return;
+
+		//		MultiConvert(pn);
+		CFolderPickerDialog cfd(NULL, 0, this, 0);
+
+		if (cfd.DoModal() == IDOK)
+		{
+			CString strFolder = cfd.GetPathName();
+
+			MultiCutting(strFolder);
+		}
+
+	}
+	else {
+		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Bmp Files (*.bmp)|*.bmp|Raw Files(*.raw)|*.raw|All Files|*.*||"), this);
+		if (dlg.DoModal() == IDCANCEL) return;
+
+		CString path = dlg.GetPathName();
+		CString path_r;
+
+		CString extention = PathFindExtension(path);
+		if (extention == ".bmp")
+		{
+			ReadImageBmp(path, m_bImageSrc);
+
+			path_r.Format(_T("%s.bmp"), path.Mid(0, path.GetLength() - 4));
+		}
+		else if (extention == ".raw")
+		{
+			// Read file contents
+			CFile file(path, CFile::modeRead);
+			UINT cnt = (UINT)file.GetLength();
+			file.Read(m_bImageSrc, cnt);
+			file.Close();
+
+			path_r.Format(_T("%s.raw"), path.Mid(0, path.GetLength()-4));
+		}
+		else return;
+
+		for (int kk = 0; kk < 160; kk++) {
+			memcpy(m_bImageTmp + 64*kk, m_bImageSrc+ 80*kk, 64);
+		}
+
+		ImageView(m_bImageTmp, 64, m_Height_Cvt, 0);
+
+		if (m_fSave) {
+			if (extention == ".bmp")
+			{
+				SaveImageBmp(path_r, imadibSrc, 64, m_Height_Cvt);
+			}
+			else if (extention == ".raw")
+			{
+				SaveImageRaw(path_r, m_bImageTmp, 64 * m_Height_Cvt);
+			}
+
+		}
+
+	}
+
+	UpdateData(FALSE);
+}
+
+
+void CFpImgResizeDlg::OnBnClickedExpand()
+{
+	// TODO: Add your control notification handler code here
+	UpdateData(TRUE);
+
+	if (m_fMulti) {
+
+		CFolderPickerDialog cfd(NULL, 0, this, 0);
+
+		if (cfd.DoModal() == IDOK)
+		{
+			CString strFolder = cfd.GetPathName();
+
+			MultiExpand(strFolder);
+		}
+
+	}
+	else {
+		CFileDialog dlg(TRUE, _T("File Open"), NULL, NULL, _T("Bmp Files (*.bmp)|*.bmp|Raw Files(*.raw)|*.raw|All Files|*.*||"), this);
+		if (dlg.DoModal() == IDCANCEL) return;
+
+		CString path = dlg.GetPathName();
+		CString path_r;
+
+		CString extention = PathFindExtension(path);
+		if (extention == ".bmp")
+		{
+			ReadImageBmp(path, m_bImageSrc);
+
+			path_r.Format(_T("%s.bmp"), path.Mid(0, path.GetLength() - 4));
+		}
+		else if (extention == ".raw")
+		{
+			// Read file contents
+			CFile file(path, CFile::modeRead);
+			UINT cnt = (UINT)file.GetLength();
+			file.Read(m_bImageSrc, cnt);
+			file.Close();
+
+			path_r.Format(_T("%s.raw"), path.Mid(0, path.GetLength() - 4));
+		}
+		else return;
+
+		memset(m_bImageTmp, 0, 80 * 160);
+		for (int kk = 0; kk < 160; kk++) {
+			memcpy(m_bImageTmp + 80 * kk, m_bImageSrc + 64 * kk, 32);
+			memcpy(m_bImageTmp + 80 * kk + 32 + 7, m_bImageSrc + 64 * kk + 32, 32);
+		}
+
+		ImageView(m_bImageTmp, 80, m_Height_Cvt, 0);
+
+		if (m_fSave) {
+			if (extention == ".bmp")
+			{
+				SaveImageBmp(path_r, imadibSrc, 80, m_Height_Cvt);
+			}
+			else if (extention == ".raw")
+			{
+				SaveImageRaw(path_r, m_bImageTmp, 80 * m_Height_Cvt);
+			}
+
+		}
+
+	}
+
+	UpdateData(FALSE);
 }

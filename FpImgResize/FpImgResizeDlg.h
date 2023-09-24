@@ -51,6 +51,8 @@ public:
 	int SavePlaneText(CString fn, CString str);
 	int MultiResize(CString path, int kind);
 	int MultiConvert(CString path);
+	int MultiCutting(CString path);
+	int MultiExpand(CString path);
 	int MultiDetect(CString path);
 	afx_msg void OnBnClickedAnalysis();
 	CString LogPath;
@@ -73,4 +75,6 @@ public:
 	CString OnReadImage();
 	afx_msg void OnEnChangeEditCvtwidth();
 	afx_msg void OnBnClickedTransform();
+	afx_msg void OnBnClickedCutting();
+	afx_msg void OnBnClickedExpand();
 };
